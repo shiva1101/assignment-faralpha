@@ -1,0 +1,36 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 20.55.73.39 >> ~/.ssh/known_hosts
+
+      - name: Copy files to VM using SCP
+        run: |
+          scp -i ~/.ssh/id_rsa app.js package.json azureuser@20.55.73.39:/home/azureuser/
+
+      - name: Install and Run on VM
+        run: |
+          ssh -i ~/.ssh/id_rsa azureuser@20.55.73.39 << 'EOF'
+            cd /home/azureuser
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            sudo pkill node || true
+            sudo nohup node app.js > app.log 2>&1 &
+            echo "Deployed successfully!"
+          EOF
