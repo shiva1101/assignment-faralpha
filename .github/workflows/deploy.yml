@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup SSH
@@ -20,11 +20,18 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Copy files to VM
+      - name: Clean old app on VM
         run: |
-          scp -i ~/.ssh/id_rsa -r . ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/azureuser/app
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            rm -rf /home/azureuser/app
+            mkdir -p /home/azureuser/app
+          "
 
-      - name: Deploy and Run
+      - name: Copy project to VM
+        run: |
+          scp -i ~/.ssh/id_rsa -r * ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/azureuser/app
+
+      - name: Install & Run App
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             cd /home/azureuser/app
