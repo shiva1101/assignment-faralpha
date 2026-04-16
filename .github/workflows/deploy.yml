@@ -20,24 +20,38 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Clean old app on VM
+      - name: Sync Files to VM
+        run: |
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/azureuser/app/
+
+      - name: Ensure Node.js and PM2 are Installed
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            rm -rf /home/azureuser/app
-            mkdir -p /home/azureuser/app
+            if ! command -v node &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+              sudo apt install -y nodejs
+            fi
+            if ! command -v pm2 &> /dev/null; then
+              sudo npm install -g pm2
+              sudo pm2 startup systemd -u azureuser --hp /home/azureuser
+            fi
           "
 
-      - name: Copy project to VM
-        run: |
-          scp -i ~/.ssh/id_rsa -r * ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/azureuser/app
-
-      - name: Install & Run App
+      - name: Deploy with Zero Downtime
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             cd /home/azureuser/app
-            sudo pkill node || true
-            sudo apt update -y
-            sudo apt install -y nodejs npm
-            npm install
-            sudo nohup node app.js > app.log 2>&1 &
+            npm install --production
+            pm2 describe faralpha-app > /dev/null 2>&1 \
+              && pm2 reload faralpha-app --update-env \
+              || pm2 start app.js --name faralpha-app
+            pm2 save
           "
+
+      - name: Health Check
+        run: |
+          sleep 5
+          curl --fail http://${{ secrets.SSH_HOST }}/sayHello
